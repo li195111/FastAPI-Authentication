@@ -1,0 +1,22 @@
+# API
+fastapi
+uvicorn
+
+# Form Data
+python-multipart
+
+requests[socks]
+PySocks
+stem
+
+# Memory Storage
+Redis
+
+# Async Task
+celery[redis]
+
+# Authentication / Crypto
+jwcrypto
+
+# Testing
+jupyter

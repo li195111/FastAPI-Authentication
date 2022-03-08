@@ -1,0 +1,29 @@
+{% extends "layout.html" %}
+{% block head %}
+{{ super() }}
+<link rel="stylesheet" href="../static/css/index.css">
+<script src="../static/js/index.js"></script>
+<title>FastAPI-Authentication</title>
+{% endblock head %}
+{% block content %}
+<div class="v-flex v-ai-flex-center p-lr-100">
+    <h1>FastAPI Authentication</h1>
+    <div class="h-flex h-ai-flex-center h-jc-space-between inp-block">
+        <label for="username">Username</label>
+        <input id="username" type="text" value="abc12345">    
+    </div>
+    <div class="h-flex h-ai-flex-center h-jc-space-between inp-block">
+        <label for="password">Password</label>
+        <input id="password" type="password" value="1234567890">
+    </div>
+    <button class="m-tb-10 btn-std" id="auth">Authentication</button>
+    <label for="token-area">Token</label>
+    <textarea class="w-full" name="token-area" id="token-area" cols="30" rows="10"></textarea>
+    <button class="m-tb-10 btn-std" id="details">Check Details</button>
+    <label for="result-area">Result</label>
+    <textarea class="w-full" name="result-area" id="result-area" cols="30" rows="10"></textarea>
+</div>
+{% endblock content %}
+{% block footer %}
+{{ super() }}
+{% endblock footer %}
