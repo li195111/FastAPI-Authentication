@@ -1,10 +1,11 @@
 import axios from 'axios';
 import * as jose from 'jose';
 
+const url = 'http://localhost:3000/authentication';
+const alg = 'RSA-OAEP-256';
+const enc = 'A256CBC-HS512';
+
 export const loginUser = async (form)=>{
-    const url = 'http://localhost:3000/authentication';
-    const alg = 'RSA-OAEP-256';
-    const enc = 'A256CBC-HS512';
     await axios.get(url,null)
     .then(async (res) => {
         const publicKey = await jose.importJWK(JSON.parse(res.data['publicKey']), alg);
@@ -20,9 +21,6 @@ export const loginUser = async (form)=>{
 }
 
 export const userInfos = async (form) => {
-    const url = 'http://localhost:3000/authentication';
-    const alg = 'RSA-OAEP-256';
-    const enc = 'A256CBC-HS512';
     const jwe = form['token-area'].value;
     await axios.post(url,{data:jwe})
     .then(res => {
