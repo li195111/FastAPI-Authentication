@@ -1,10 +1,12 @@
 import json
-import hashlib
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
+import time
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from jwcrypto import jwt, jwa, jwk, jws, jwe
+from jwcrypto import jwk, jwe
+import redis
+from utils import error_msg
 
 app = FastAPI()
 origins = [
@@ -19,7 +21,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-KEY_PAIR = {}
+rdb = redis.Redis(host='localhost',port=6379,db=0)
+
+jwt_valid_seconds = 3
+expiry_time = round(time.time()) + jwt_valid_seconds
 
 @app.get('/')
 async def index(req:Request):
@@ -35,31 +40,37 @@ async def authentication(req:Request):
         kid = uuid.uuid4().hex
         private_key = jwk.JWK.generate(kty='RSA',size=2048, kid=kid)
         public_key = private_key.export_public()
-        KEY_PAIR[kid] = private_key
-        return {'status':'success','time':datetime.utcnow(),'publicKey':public_key,"kid":kid} 
-    except:
-        return {'status':'failed','time':datetime.utcnow()}
+        expiry_time = (datetime.utcnow() + timedelta(seconds=3)).timestamp()
+        rdb.hset('KEY_PAIR', kid, json.dumps({'key':private_key,'exp':expiry_time}))
+        return {'status':'success','time':datetime.utcnow(),'publicKey':public_key,'expiry_time':expiry_time,"kid":kid} 
+    except Exception as e:
+        return {'status':'failed','time':datetime.utcnow(),'msg':error_msg(e)}
 
 @app.post('/authentication')
 async def authentication(req:Request):
     try:
-        
         data = json.loads((await req.body()).decode())
         loginInfo = data.get('data')
         if loginInfo:
             datas = loginInfo.split('@')
             kid = datas[0]
-            enc = datas[1]
-            jwetoken = jwe.JWE()
-            jwetoken.deserialize(enc, key=KEY_PAIR[kid])
-            payload = jwetoken.payload.decode('utf-8')
-            if not payload is None and payload:
-                secret_infos = json.loads(payload)
-                verify = (secret_infos['username'] == 'abc12345') and (secret_infos['password'] == '1234567890')
-                return {'status':'success','time':datetime.utcnow(),'verify':verify}
-        return {'status':'failed','time':datetime.utcnow(),'verify':False} 
-    except:
-        return {'status':'failed','time':datetime.utcnow(),'verify':False} 
+            KEY_STR = rdb.hget('KEY_PAIR',kid)
+            if len(datas) > 0 and not KEY_STR is None:
+                KEY = json.loads(KEY_STR)
+                if datetime.fromtimestamp(KEY['exp']) > datetime.utcnow():
+                    jwetoken = jwe.JWE()
+                    jwetoken.deserialize(datas[1], key=jwk.JWK(**KEY['key']))
+                    payload = jwetoken.payload.decode('utf-8')
+                    if not payload is None and payload:
+                        secret_infos = json.loads(payload)
+                        verify = (secret_infos['username'] == 'abc12345') and (secret_infos['password'] == '1234567890')
+                        rdb.hdel('KEY_PAIR',kid)
+                        return {'status':'success','time':datetime.utcnow(),'verify':verify}
+                    return {'status':'failed','time':datetime.utcnow(),'verify':False, 'reason':'no payload.'} 
+                return {'status':'failed','time':datetime.utcnow(),'verify':False, 'reason':'Token Expired.'} 
+        return {'status':'failed','time':datetime.utcnow(),'verify':False, 'reason':'no data received.'} 
+    except Exception as e:
+        return {'status':'failed','time':datetime.utcnow(),'msg':error_msg(e)}
 
 if __name__ == "__main__":
     import uvicorn
