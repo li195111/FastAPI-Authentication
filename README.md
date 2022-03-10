@@ -7,12 +7,23 @@ FastAPI RESTful Authentication API use JWT(Json Web Token) Implements
 - NodeJS (Front-End)
 # HOW TO
 
-Following command will run redis-server automatically. make sure your environment already installed.
+Following command will run redis-server automatically. 
 
+1. make sure your environment already installed redis.
+2. to front-end folder.
+```
+cd auth-front-end
+```
+3. install packages.
+```
+npm i
+```
+4. back to root folder.
+```
+cd ..
+```
+5. Run the following execute command.
 ```
 python run.py
 ```
-
-and open browser to
-
-http://localhost:3001
+6. and open browser to http://localhost:3001

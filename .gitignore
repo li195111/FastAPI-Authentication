@@ -130,3 +130,7 @@ dmypy.json
 .vscode/
 dump.rdb
 *.db
+node_modules/
+*.bak
+*.dat
+*.dir
