@@ -4,6 +4,15 @@ FastAPI RESTful Authentication API use JWT(Json Web Token) Implements
 # Requirements
 - Python 3 (Back-End)
 - Redis
+    - [Windows .msi install Version](https://github.com/MicrosoftArchive/redis)
+    - Mac OS `brew install redis`
+    - Linux - Following Command
+
+        ```
+        sudo apt update
+        sudo apt install redis-server
+        ```
+
 - NodeJS (Front-End)
 # HOW TO
 
