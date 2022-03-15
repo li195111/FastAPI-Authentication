@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime, timedelta
 import time
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from jwcrypto import jwk, jwe
 import redis
@@ -26,6 +27,22 @@ rdb = redis.Redis(host='localhost',port=6379,db=0)
 jwt_valid_seconds = 3
 expiry_time = round(time.time()) + jwt_valid_seconds
 
+@app.exception_handler(Exception)
+async def http_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    return JSONResponse({'status':'failed','time':utc_now(),'msg':error_msg(exc).details_message}, status_code=404)
+
+@app.on_event("startup")
+async def startup_event():
+    pass
+
+@app.on_event("shutdown")
+def shutdown_event():
+    pass
+
+# API
+# ---------------------------------------------------
+# GET /
+# ---------------------------------------------------
 @app.get('/')
 async def index(req:Request):
     return {'status':'success','time':datetime.utcnow()}

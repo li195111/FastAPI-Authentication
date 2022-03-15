@@ -40,3 +40,6 @@ def clean_key_pairs(rdb):
                 rdb.hdel('KEY_PAIR',k)
     except Exception as e:
         print (error_msg(e))
+        
+def utc_now()->str:
+    return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S.%F")
