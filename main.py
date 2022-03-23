@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from jwcrypto import jwk, jwe
 import redis
-from utils import error_msg
+from utils import error_msg, utc_now
 
 app = FastAPI()
 origins = [
