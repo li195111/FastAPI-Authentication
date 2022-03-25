@@ -2,6 +2,9 @@
 fastapi
 uvicorn
 
+# .env
+python-dotenv
+
 # Form Data
 python-multipart
 
@@ -17,6 +20,10 @@ celery[redis]
 
 # Authentication / Crypto
 jwcrypto
+python-jose[cryptography] # generate and verify the JWT tokens
+
+# Hash
+passlib[bcrypt] # handle password hashes
 
 # Testing
 jupyter
