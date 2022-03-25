@@ -1,18 +1,24 @@
+import os
 import json
+import time
 import uuid
 from datetime import datetime, timedelta
-import time
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
-from jwcrypto import jwk, jwe
+from argparse import Namespace
+
 import redis
-from utils import error_msg, utc_now
+import dotenv
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from jwcrypto import jwe, jwk, jwt
+
+from model import AuthResponse, PublicKey, Response, Status, PrivateKey, AuthKeys
+from utils import error_msg
 
 app = FastAPI()
-origins = [
-    "http://localhost:3001"
-]
+origins = ["http://localhost:3001"]
+
+dotenv.load_dotenv()
 
 app.add_middleware(
     CORSMiddleware,
@@ -22,74 +28,136 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-rdb = redis.Redis(host='localhost',port=6379,db=0)
+INPUT_OPTIONS = None
 
-jwt_valid_seconds = 3
-expiry_time = round(time.time()) + jwt_valid_seconds
 
 @app.exception_handler(Exception)
-async def http_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    return JSONResponse({'status':'failed','time':utc_now(),'msg':error_msg(exc).details_message}, status_code=404)
+async def http_exception_handler(request: Request,
+                                 exc: Exception) -> JSONResponse:
+  return JSONResponse(Response(status=Status.Failed,
+                               msg=error_msg(exc).details_message),
+                      status_code=404)
+
+
+def generate_auth_key():
+  kid = uuid.uuid4().hex
+  pvk = jwk.JWK.generate(kty=os.environ.get('JWK_KTY'),
+                         size=int(os.environ.get('JWK_SIZE')),
+                         kid=kid)
+  pbk = pvk.export_public()
+  return AuthKeys(kid=kid, pvk=pvk, pbk=pbk)
+
+
+def update_auth_key(key: AuthKeys):
+  exp_time = (
+      datetime.utcnow() +
+      timedelta(days=int(os.environ.get('AUTH_EXP_DAYS', 7)))).timestamp()
+  INPUT_OPTIONS.redis.hset('PV_KEYS', key.kid,
+                           PrivateKey(pvk=key.pvk, exp=exp_time).json())
+  INPUT_OPTIONS.redis.hset('PB_KEYS', key.kid,
+                           PublicKey(pbk=key.pbk, exp=exp_time).json())
+
 
 @app.on_event("startup")
 async def startup_event():
-    pass
+  global INPUT_OPTIONS
+  rdb = redis.Redis(host=os.environ.get('REDIS_HOST', 'localhost'),
+                    port=int(os.environ.get('REDIS_PORT', 6379)),
+                    db=int(os.environ.get('REDIS_DATABASE', 0)))
+  if INPUT_OPTIONS is None:
+    INPUT_OPTIONS = Namespace(redis=rdb)
+  key = generate_auth_key()
+  update_auth_key(key)
+  INPUT_OPTIONS.kid = key.kid
+
 
 @app.on_event("shutdown")
 def shutdown_event():
-    pass
+  pass
+
 
 # API
 # ---------------------------------------------------
 # GET /
 # ---------------------------------------------------
 @app.get('/')
-async def index(req:Request):
-    return {'status':'success','time':datetime.utcnow()}
+async def index():
+  return Response(status=Status.Success)
 
+
+# ---------------------------------------------------
+# GET /test
+# ---------------------------------------------------
 @app.get('/test')
-async def test(req:Request):
-    return {'status':'success','time':datetime.utcnow()}
+async def test():
+  return Response(status=Status.Success)
 
+
+# ---------------------------------------------------
+# GET /authentication
+# ---------------------------------------------------
 @app.get('/authentication')
-async def authentication(req:Request):
-    try:
-        kid = uuid.uuid4().hex
-        private_key = jwk.JWK.generate(kty='RSA',size=2048, kid=kid)
-        public_key = private_key.export_public()
-        expiry_time = (datetime.utcnow() + timedelta(seconds=3)).timestamp()
-        rdb.hset('KEY_PAIR', kid, json.dumps({'key':private_key,'exp':expiry_time}))
-        return {'status':'success','time':datetime.utcnow(),'publicKey':public_key,'expiry_time':expiry_time,"kid":kid} 
-    except Exception as e:
-        return {'status':'failed','time':datetime.utcnow(),'msg':error_msg(e)}
+async def authentication():
+  val_time = 3
+  exp_time = round(time.time()) + val_time
+  jwt_header = {
+      'alg': os.environ.get('JWT_ALG'),
+      'enc': os.environ.get('JWT_ENC')
+  }
+  jwt_claims = {'exp': exp_time}
+  jwt_token = jwt.JWT(header=jwt_header, claims=jwt_claims)
+  pvk_str = INPUT_OPTIONS.redis.hdel('PV_KEYS', INPUT_OPTIONS.kid)
+  pbk_str = INPUT_OPTIONS.redis.hdel('PB_KEYS', INPUT_OPTIONS.kid)
+  pvk_obj = PrivateKey.parse_raw(pvk_str)
+  pbk_obj = PublicKey.parse_raw(pbk_str)
+  if datetime.utcnow().timestamp() > pvk_obj.exp:
+    pvk = jwk.JWK(**pvk_obj.pvk)
+    pbk = jwk.JWK(**pbk_obj.pbk)
+  else:
+    key = generate_auth_key()
+    update_auth_key(key)
+    pvk = key.pvk
+    pbk = key.pbk
+  jwt_token.make_encrypted_token(pvk)
+  return AuthResponse(status=Status.Success,
+                      token=jwt_token,
+                      key=pbk,
+                      exp=exp_time)
 
+
+# ---------------------------------------------------
+# POST /authentication
+# ---------------------------------------------------
 @app.post('/authentication')
-async def authentication(req:Request):
-    try:
-        data = json.loads((await req.body()).decode())
-        loginInfo = data.get('data')
-        if loginInfo:
-            datas = loginInfo.split('@')
-            kid = datas[0]
-            KEY_STR = rdb.hget('KEY_PAIR',kid)
-            if len(datas) > 0 and not KEY_STR is None:
-                KEY = json.loads(KEY_STR)
-                if datetime.fromtimestamp(KEY['exp']) > datetime.utcnow():
-                    jwetoken = jwe.JWE()
-                    jwetoken.deserialize(datas[1], key=jwk.JWK(**KEY['key']))
-                    payload = jwetoken.payload.decode('utf-8')
-                    if not payload is None and payload:
-                        secret_infos = json.loads(payload)
-                        verify = (secret_infos['username'] == 'abc12345') and (secret_infos['password'] == '1234567890')
-                        rdb.hdel('KEY_PAIR',kid)
-                        return {'status':'success','time':datetime.utcnow(),'verify':verify}
-                    return {'status':'failed','time':datetime.utcnow(),'verify':False, 'reason':'no payload.'} 
-                return {'status':'failed','time':datetime.utcnow(),'verify':False, 'reason':'Token Expired.'} 
-        return {'status':'failed','time':datetime.utcnow(),'verify':False, 'reason':'no data received.'} 
-    except Exception as e:
-        return {'status':'failed','time':datetime.utcnow(),'msg':error_msg(e)}
+async def authentication(req: Request):
+  json_data = json.loads((await req.body()).decode())
+  data = json_data.get('data')
+  token_str = req.headers.get('Authorization')
+  if loginInfo:
+    datas = loginInfo.split('@')
+    kid = datas[0]
+    pvk_str = INPUT_OPTIONS.redis.hget('PV_KEYS', kid)
+    if len(datas) > 0 and not pvk_str is None:
+      pvk_obj = PrivateKey.parse_raw(pvk_str)
+      if datetime.fromtimestamp(KEY['exp']) > datetime.utcnow():
+        jwetoken = jwe.JWE()
+        jwetoken.deserialize(datas[1], key=jwk.JWK(**KEY['key']))
+        payload = jwetoken.payload.decode('utf-8')
+        if not payload is None and payload:
+          secret_infos = json.loads(payload)
+          verify = (secret_infos['username'] == 'abc12345') and\
+            (secret_infos['password'] == '1234567890')
+          INPUT_OPTIONS['redis'].hdel('PV_KEYS', kid)
+          return AuthResponse(status=Status.Success, verify=verify)
+        return AuthResponse(status=Status.Failed, msg='No Payload')
+      return AuthResponse(status=Status.Failed, msg='Token Expired')
+  return AuthResponse(status=Status.Failed, msg='No Data Received')
+
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run('main:app', host='0.0.0.0', port=3000, reload=True, log_level='debug')
-
+  import uvicorn
+  uvicorn.run('main:app',
+              host='0.0.0.0',
+              port=3000,
+              reload=True,
+              log_level='debug')
