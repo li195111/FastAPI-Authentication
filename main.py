@@ -1,3 +1,6 @@
+'''
+FastAPI JWT Implements
+'''
 import os
 import json
 import time
@@ -7,7 +10,7 @@ from argparse import Namespace
 
 import redis
 import dotenv
-from fastapi import FastAPI, Request
+from fastapi import Request, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from jwcrypto import jwe, jwk, jwt
@@ -16,7 +19,7 @@ from model import AuthResponse, PublicKey, Response, Status, PrivateKey, AuthKey
 from utils import error_msg
 
 app = FastAPI()
-origins = ["http://localhost:3001"]
+origins = ['http://localhost:3001']
 
 dotenv.load_dotenv()
 
@@ -24,19 +27,25 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=['*'],
+    allow_headers=['*'],
 )
 
 INPUT_OPTIONS = None
 
 
 @app.exception_handler(Exception)
-async def http_exception_handler(request: Request,
-                                 exc: Exception) -> JSONResponse:
+async def http_exception_handler(exc: Exception) -> JSONResponse:
   return JSONResponse(Response(status=Status.Failed,
                                msg=error_msg(exc).details_message),
                       status_code=404)
+
+
+@app.exception_handler(jwt.JWTExpired)
+async def jwt_expired_exception_handler(exc: jwt.JWTExpired) -> JSONResponse:
+  return JSONResponse(Response(status=Status.Failed,
+                               msg=error_msg(exc).details_message),
+                      status_code=401)
 
 
 def generate_auth_key():
@@ -58,7 +67,7 @@ def update_auth_key(key: AuthKeys):
                            PublicKey(pbk=key.pbk, exp=exp_time).json())
 
 
-@app.on_event("startup")
+@app.on_event('startup')
 async def startup_event():
   global INPUT_OPTIONS
   rdb = redis.Redis(host=os.environ.get('REDIS_HOST', 'localhost'),
@@ -71,7 +80,7 @@ async def startup_event():
   INPUT_OPTIONS.kid = key.kid
 
 
-@app.on_event("shutdown")
+@app.on_event('shutdown')
 def shutdown_event():
   pass
 
@@ -129,32 +138,39 @@ async def authentication():
 # POST /authentication
 # ---------------------------------------------------
 @app.post('/authentication')
-async def authentication(req: Request):
+async def authentication_post(req: Request):
+  credentials_exception = HTTPException(
+      status_code=status.HTTP_401_UNAUTHORIZED,
+      detail='Could not validate credentials',
+      headers={'WWW-Authenticate': 'Bearer'},
+  )
   json_data = json.loads((await req.body()).decode())
   data = json_data.get('data')
   token_str = req.headers.get('Authorization')
-  if loginInfo:
-    datas = loginInfo.split('@')
-    kid = datas[0]
-    pvk_str = INPUT_OPTIONS.redis.hget('PV_KEYS', kid)
-    if len(datas) > 0 and not pvk_str is None:
-      pvk_obj = PrivateKey.parse_raw(pvk_str)
-      if datetime.fromtimestamp(KEY['exp']) > datetime.utcnow():
-        jwetoken = jwe.JWE()
-        jwetoken.deserialize(datas[1], key=jwk.JWK(**KEY['key']))
-        payload = jwetoken.payload.decode('utf-8')
-        if not payload is None and payload:
-          secret_infos = json.loads(payload)
-          verify = (secret_infos['username'] == 'abc12345') and\
-            (secret_infos['password'] == '1234567890')
-          INPUT_OPTIONS['redis'].hdel('PV_KEYS', kid)
-          return AuthResponse(status=Status.Success, verify=verify)
-        return AuthResponse(status=Status.Failed, msg='No Payload')
-      return AuthResponse(status=Status.Failed, msg='Token Expired')
-  return AuthResponse(status=Status.Failed, msg='No Data Received')
+  if token_str is None:
+    raise credentials_exception
+  pvk_str = INPUT_OPTIONS.redis.hdel('PV_KEYS', INPUT_OPTIONS.kid)
+  pvk_obj = PrivateKey.parse_raw(pvk_str)
+  pvk = jwk.JWK(**pvk_obj.pvk)
+  token = jwt.JWT()
+  token.deserialize(token_str, pvk)
+  data_split = data.split('@')
+  kid = data_split[0]
+  if len(data_split) > 0 and not pvk_str is None:
+    if datetime.utcnow() < pvk_obj.exp:
+      jwetoken = jwe.JWE()
+      jwetoken.deserialize(data_split[1], key=pvk)
+      payload = jwetoken.payload.decode('utf-8')
+      if not payload is None and payload:
+        secret_infos = json.loads(payload)
+        verify = (secret_infos['username'] == 'abc12345') and\
+          (secret_infos['password'] == '1234567890')
+        INPUT_OPTIONS['redis'].hdel('PV_KEYS', kid)
+        return AuthResponse(status=Status.Success, verify=verify)
+  raise credentials_exception
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   import uvicorn
   uvicorn.run('main:app',
               host='0.0.0.0',

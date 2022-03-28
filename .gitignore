@@ -134,3 +134,4 @@ node_modules/
 *.bak
 *.dat
 *.dir
+pylintrc
