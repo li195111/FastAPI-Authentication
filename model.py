@@ -70,3 +70,16 @@ class User(IBase):
   email: str | None = None
   full_name: str | None = None
   disable: bool | None = None
+
+
+class UserInDB(User):
+  hashed_password: str
+
+
+class Token(IBase):
+  access_token: str
+  token_type: str
+
+
+class TokenData(IBase):
+  username: str | None = None
