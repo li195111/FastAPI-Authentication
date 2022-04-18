@@ -135,3 +135,4 @@ node_modules/
 *.dat
 *.dir
 pylintrc
+*.drawio
