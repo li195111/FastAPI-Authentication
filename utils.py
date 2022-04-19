@@ -1,10 +1,15 @@
+'''
+Utils Module 
+© 2022 - 酷喬伊科技有限公司 QChoice Tech, Ltd. All rights reserved.
+'''
+import datetime
 import sys
 import traceback
-import json
-from datetime import datetime
+import uuid
 
 
 class ErrorMessage:
+  '''Error Message Instanace'''
 
   def __init__(self, error_class, detail, file_track) -> None:
     self.error_class = error_class
@@ -16,11 +21,11 @@ class ErrorMessage:
 
   @property
   def part_message(self):
-    return f"[{self.error_class}] {self.detail}"
+    return f'[{self.error_class}] {self.detail}'
 
   @property
   def details_message(self):
-    return f"\n{self.file_track}\n[{self.error_class}] {self.detail}\n"
+    return f'\n{self.file_track}\n[{self.error_class}] {self.detail}\n'
 
 
 def error_msg(err):
@@ -29,25 +34,17 @@ def error_msg(err):
     detail = err.args[0]
   else:
     detail = ''
-  cl, exc, tb = sys.exc_info()
+  _, _, tb = sys.exc_info()
   details = '\n'.join([
-      f"File \"{s[0]}\", line {s[1]} in {s[2]}"
+      f'File \'{s[0]}\', line {s[1]} in {s[2]}'
       for s in traceback.extract_tb(tb)
   ])
   return ErrorMessage(error_class, detail, details)
 
 
-# Redis
-# Remove Expired Token from Redis
-def clean_key_pairs(rdb):
-  try:
-    for k, v in rdb.hgetall('KEY_PAIR').items():
-      KEY = json.loads(v)
-      if datetime.fromtimestamp(KEY['exp']) < datetime.utcnow():
-        rdb.hdel('KEY_PAIR', k)
-  except Exception as e:
-    print(error_msg(e))
-
-
 def utc_now() -> str:
-  return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S.%f")
+  return datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')
+
+
+def uuidgen() -> str:
+  return uuid.uuid4().hex

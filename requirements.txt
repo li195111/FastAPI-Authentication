@@ -1,7 +1,7 @@
 # API
 fastapi
 uvicorn
-
+PyYAML
 # .env
 python-dotenv
 
@@ -14,6 +14,10 @@ stem
 
 # Memory Storage
 Redis
+
+# SQL
+SQLAlchemy
+psycopg2
 
 # Async Task
 celery[redis]

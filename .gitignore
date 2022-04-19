@@ -136,3 +136,5 @@ node_modules/
 *.dir
 pylintrc
 *.drawio
+test.ipynb
+fixtures.json

@@ -34,7 +34,7 @@ if __name__ == "__main__":
   frontend.start()
 
   # uvicorn filename:app
-  sys.argv += ['main:app', '--reload', '--host=0.0.0.0', '--port=3000']
+  sys.argv += ['main_oauth2:app', '--reload', '--host=0.0.0.0', '--port=3000']
   uvicorn.main()
 
   redis.join()
