@@ -40,9 +40,9 @@ async def verify(auth: models.Auth = Depends(dependencies.verify)):
 
 
 @router.post('/', response_model=models.Token)
-def create_user(opts=Depends(options.get_opts),
-                token: str = Depends(dependencies.oauth2_scheme),
-                db: Session = Depends(database.get_db)):
+async def create_user(opts=Depends(options.get_opts),
+                      token: str = Depends(dependencies.oauth2_scheme),
+                      db: Session = Depends(database.get_db)):
   user_data = dependencies.model_parse(opts, models.UserCreateWithKey, token)
   user = models.UserCreate2User(user_data.user_create)
   db_user = crud.create_user_if_not_exists(db, user)
@@ -53,9 +53,9 @@ def create_user(opts=Depends(options.get_opts),
 
 
 @router.get('/revalidation', response_model=models.Token)
-def resend_validation(opts=Depends(options.get_opts),
-                      token: str = Depends(dependencies.oauth2_scheme),
-                      db: Session = Depends(database.get_db)):
+async def resend_validation(opts=Depends(options.get_opts),
+                            token: str = Depends(dependencies.oauth2_scheme),
+                            db: Session = Depends(database.get_db)):
   user_data = dependencies.model_parse(opts, models.ValidationUser, token)
   db_user = dependencies.get_user_by_sub(db, user_data.sub)
   if not db_user.is_active:
